@@ -1,0 +1,80 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# ------------------------------
+# Load Open Interest Data
+# ------------------------------
+oi_df = pd.read_csv("C:/Users/Jay.Jain/Desktop/Codes - Jay/Assignment 1/YBA OI.csv", skiprows=[0])
+oi_df.rename(columns={oi_df.columns[0]: "Date", oi_df.columns[1]: "Open Interest"}, inplace=True)
+oi_df["Date"] = pd.to_datetime(oi_df["Date"], errors='coerce')
+oi_df["Open Interest"] = pd.to_numeric(oi_df["Open Interest"], errors='coerce')
+oi_df = oi_df[["Date", "Open Interest"]].dropna()
+oi_df = oi_df[(oi_df["Date"].dt.year >= 2012) & (oi_df["Date"].dt.year <= 2015)]
+oi_df = oi_df.set_index("Date").resample("D").last().dropna().reset_index()
+
+# ------------------------------
+# Load Price Data
+# ------------------------------
+price_df = pd.read_csv("C:/Users/kavy.uprariya/Desktop/Codes - Kavy/Assignment 1/YBAc1.csv")
+price_df["Date"] = pd.to_datetime(price_df["Date-Time"], errors='coerce').dt.tz_localize(None)
+price_df = price_df[["Date", "Last"]].rename(columns={"Last": "Price"}).dropna()
+price_df = price_df[(price_df["Date"].dt.year >= 2012) & (price_df["Date"].dt.year <= 2015)]
+price_df = price_df.set_index("Date").resample("D").last().dropna().reset_index()
+
+# ------------------------------
+# Merge and Compute Changes
+# ------------------------------
+merged = pd.merge(oi_df, price_df, on="Date", how="inner")
+merged["OI Change (%)"] = merged["Open Interest"].pct_change() * 100
+merged["Price Change (%)"] = merged["Price"].pct_change() * 100
+merged.dropna(inplace=True)
+
+# ------------------------------
+# Categorize Behavior
+# ------------------------------
+def categorize(row):
+    if row["OI Change (%)"] > 0 and row["Price Change (%)"] > 0:
+        return "Long Buildup"
+    elif row["OI Change (%)"] < 0 and row["Price Change (%)"] < 0:
+        return "Long Unwinding"
+    elif row["OI Change (%)"] < 0 and row["Price Change (%)"] > 0:
+        return "Short Covering"
+    elif row["OI Change (%)"] > 0 and row["Price Change (%)"] < 0:
+        return "Short Buildup"
+    else:
+        return "Unclassified"
+
+merged["Behavior"] = merged.apply(categorize, axis=1)
+
+# ------------------------------
+# Plot
+# ------------------------------
+plt.figure(figsize=(12, 6))
+sns.scatterplot(
+    data=merged,
+    x="Price Change (%)",
+    y="OI Change (%)",
+    hue="Behavior",
+    palette={
+        "Long Buildup": "green",
+        "Short Buildup": "red",
+        "Long Unwinding": "blue",
+        "Short Covering": "orange",
+        "Unclassified": "gray"
+    },
+    alpha=0.7,
+    s=60
+)
+
+# Add quadrant lines
+plt.axhline(0, color='black', linestyle='--', linewidth=1)
+plt.axvline(0, color='black', linestyle='--', linewidth=1)
+
+plt.title("OI vs Price Change with Trade Behavior (2012–2015)", fontsize=14)
+plt.xlabel("Price Change (%)")
+plt.ylabel("Open Interest Change (%)")
+plt.legend(title="Behavior", loc="upper right")
+plt.grid(True)
+plt.tight_layout()
+plt.show()
