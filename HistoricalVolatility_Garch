@@ -1,0 +1,72 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from arch import arch_model
+
+# ---------------------------------------------
+# Load & Preprocess Data
+# ---------------------------------------------
+df = pd.read_csv("C:/Users/jay.jain/Desktop/Codes - Jay/Assignment 1/YBAc1.csv")
+
+# Fix columns
+df.columns = ['Ticker1', 'Ticker2', 'Description', 'Timestamp', 'Col5', 'Frequency',
+              'Open', 'High', 'Low', 'Close', 'Volume']
+
+# Clean and sort
+df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
+df.dropna(subset=['Timestamp', 'Close'], inplace=True)
+df = df[(df['Timestamp'].dt.year >= 2012) & (df['Timestamp'].dt.year <= 2015)]
+df.sort_values('Timestamp', inplace=True)
+df.set_index('Timestamp', inplace=True)
+
+# ---------------------------------------------
+# Step 1: Calculate Daily Log Returns
+# ---------------------------------------------
+df['LogReturn'] = np.log(df['Close'] / df['Close'].shift(1))
+df.dropna(subset=['LogReturn'], inplace=True)
+
+# Step 1a: Calculate Historical Volatility (Rolling Std Dev)
+rolling_vol = df['LogReturn'].rolling(window=21).std() * np.sqrt(252)
+
+# Plot Historical Volatility
+plt.figure(figsize=(10, 4))
+rolling_vol.plot(title='Historical Volatility (21-day Rolling Std Dev Annualized)')
+plt.ylabel('Volatility')
+plt.xlabel('Date')
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# ---------------------------------------------
+# Step 2: Fit GARCH Model
+# ---------------------------------------------
+returns = df['LogReturn'] * 100  # Scale for better fitting
+
+model = arch_model(returns, vol='GARCH', p=1, q=1)
+res = model.fit(disp="off")
+
+# Summary
+print(res.summary())
+
+# ---------------------------------------------
+# Step 3: Forecast Future Volatility
+# ---------------------------------------------
+forecast_horizon = 5  # days
+forecast = res.forecast(horizon=forecast_horizon)
+
+# Extract variance forecast
+variance_forecast = forecast.variance.iloc[-1]
+volatility_forecast = np.sqrt(variance_forecast)
+
+print(f"\nForecasted Volatility (next {forecast_horizon} days):")
+print(volatility_forecast)
+
+# Plot volatility forecast
+plt.figure(figsize=(6, 3))
+plt.bar(range(1, forecast_horizon + 1), volatility_forecast.values)
+plt.title(f'{forecast_horizon}-Day Ahead Volatility Forecast (GARCH)')
+plt.xlabel('Day')
+plt.ylabel('Volatility (%)')
+plt.tight_layout()
+plt.grid(True)
+plt.show()
